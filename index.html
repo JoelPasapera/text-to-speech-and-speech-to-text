@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voz y letra</title>
+<meta name="description" content="Dictado y lectura en voz alta en español, directamente en el navegador.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="masthead">
+  <h1 class="masthead__title">Voz y letra</h1>
+  <p class="masthead__lede">Habla y se escribe. Escribe y se dice.</p>
+</header>
+
+<!-- El espectrograma es la pieza central: hace visible lo que el micrófono
+     está oyendo en este instante, y es el mejor diagnóstico cuando el
+     reconocimiento falla (nivel bajo, ruido de fondo, micrófono mudo). -->
+<section class="scope" aria-label="Espectrograma del micrófono">
+  <canvas id="spectrogram" class="scope__canvas"></canvas>
+  <p class="scope__resting">El micrófono está cerrado</p>
+  <div id="level" class="scope__level" aria-hidden="true"></div>
+</section>
+
+<div id="status" class="status" data-state="idle">
+  <span class="status__dot" aria-hidden="true"></span>
+  <span class="status__label">En reposo</span>
+  <span class="status__meta"></span>
+  <button id="listen" class="button button--primary" data-active="false">Escuchar</button>
+  <p class="status__notice" role="status" hidden></p>
+</div>
+
+<div class="settings">
+  <label class="field">
+    <span class="field__label">Variante</span>
+    <select id="lang" class="field__control">
+      <option value="es-PE" selected>Español de Perú</option>
+      <option value="es-MX">Español de México</option>
+      <option value="es-ES">Español de España</option>
+      <option value="es-AR">Español de Argentina</option>
+      <option value="es-CO">Español de Colombia</option>
+      <option value="es-CL">Español de Chile</option>
+      <option value="es-US">Español de Estados Unidos</option>
+    </select>
+  </label>
+
+  <fieldset class="modes">
+    <legend class="field__label">Modo</legend>
+    <label class="mode">
+      <input type="radio" name="mode" value="dictado" id="mode-dictado" checked>
+      <span>Dictado</span>
+    </label>
+    <label class="mode">
+      <input type="radio" name="mode" value="conversacion" id="mode-conversacion" disabled>
+      <span>Conversación</span>
+    </label>
+    <p id="mode-hint" class="toggle__hint">Comprobando el modelo…</p>
+  </fieldset>
+
+  <label class="toggle">
+    <input type="checkbox" id="local-mode" class="toggle__input">
+    <span class="toggle__body">
+      <span class="toggle__label">Procesar en el dispositivo</span>
+      <span id="local-hint" class="toggle__hint">Comprobando disponibilidad…</span>
+    </span>
+  </label>
+</div>
+
+<main class="workspace">
+
+  <section class="panel panel--wide">
+    <h2 class="panel__title">Lo que dices</h2>
+    <div id="transcript" class="transcript" aria-live="polite"></div>
+    <div class="panel__actions">
+      <button id="to-composer" class="button">Pasar al lector</button>
+      <button id="copy" class="button">Copiar</button>
+      <button id="undo" class="button button--quiet">Deshacer lo último</button>
+      <button id="clear" class="button button--quiet">Vaciar</button>
+    </div>
+  </section>
+
+  <section id="dialogue" class="panel panel--dialogue" data-state="idle" hidden>
+    <h2 class="panel__title">Conversación</h2>
+    <p class="dialogue__status">Conversación detenida</p>
+    <p class="dialogue__progress" hidden></p>
+    <div class="dialogue__thread" aria-live="polite"></div>
+    <div class="panel__actions">
+      <button id="dialogue-stop" class="button">Cortar respuesta</button>
+      <button id="dialogue-reset" class="button button--quiet">Empezar de cero</button>
+    </div>
+  </section>
+
+  <section id="composer" class="panel" data-speaking="false">
+    <h2 class="panel__title">Lo que quieres oír</h2>
+
+    <textarea id="tts-text" class="composer__text" rows="6"
+      placeholder="Escribe aquí y pulsa Hablar."
+      spellcheck="true" lang="es"></textarea>
+
+    <label class="field">
+      <span class="field__label">Voz</span>
+      <select id="tts-voice" class="field__control"></select>
+    </label>
+
+    <div class="sliders">
+      <label class="slider">
+        <span class="slider__label">Velocidad</span>
+        <input id="tts-rate" class="slider__input" type="range" min="0.5" max="2" step="0.05" value="1">
+        <output id="tts-rate-value" class="slider__value">1.00×</output>
+      </label>
+
+      <label class="slider">
+        <span class="slider__label">Tono</span>
+        <input id="tts-pitch" class="slider__input" type="range" min="0.5" max="1.6" step="0.05" value="1">
+        <output id="tts-pitch-value" class="slider__value">1.00</output>
+      </label>
+    </div>
+
+    <div class="panel__actions">
+      <button id="tts-speak" class="button button--primary" disabled>Hablar</button>
+      <button id="tts-stop" class="button button--primary" hidden>Detener</button>
+      <span id="tts-progress" class="composer__progress" aria-live="polite"></span>
+    </div>
+  </section>
+
+</main>
+
+<footer class="colophon">
+  <p>El dictado usa el reconocimiento del navegador; la lectura, las voces instaladas en tu sistema. El modo conversación usa el modelo de lenguaje integrado en Chrome, que corre en tu equipo. Mientras el asistente habla, el micrófono se cierra para no transcribir su propia voz.</p>
+</footer>
+
+<!-- Guardia de arranque.
+
+     Un módulo ES con un import roto falla entero y en silencio: la consola lo
+     dice, la página no. Y una hoja de estilos ausente sólo se nota si uno sabe
+     cómo debería verse. Este bloque comprueba las dos cosas y, si algo no
+     llegó, lo escribe en pantalla con la causa probable.
+
+     Va sin `type="module"` a propósito: tiene que ejecutarse aunque el sistema
+     de módulos sea justamente lo que está roto. -->
+<script>
+(function () {
+  var ARRANQUE_MS = 1500;
+
+  function cssCargado() {
+    var v = getComputedStyle(document.documentElement).getPropertyValue('--ground');
+    return v.trim() !== '';
+  }
+
+  function aviso(titulo, lineas) {
+    var caja = document.createElement('div');
+    caja.setAttribute('role', 'alert');
+    caja.style.cssText = 'position:fixed;inset:auto 0 0 0;z-index:9999;'
+      + 'padding:16px 20px;background:#2a1620;border-top:2px solid #c2447d;'
+      + 'color:#e4e8f0;font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;';
+
+    var h = document.createElement('strong');
+    h.textContent = titulo;
+    h.style.cssText = 'display:block;margin-bottom:6px;color:#ed8845;';
+    caja.appendChild(h);
+
+    var ul = document.createElement('ul');
+    ul.style.cssText = 'margin:0;padding-left:18px;';
+    lineas.forEach(function (linea) {
+      var li = document.createElement('li');
+      li.textContent = linea;
+      ul.appendChild(li);
+    });
+    caja.appendChild(ul);
+
+    document.body.appendChild(caja);
+  }
+
+  setTimeout(function () {
+    var sinCss = !cssCargado();
+    var sinJs = window.__vozArrancada !== true;
+    if (!sinCss && !sinJs) return;
+
+    var lineas = [];
+    if (sinCss) lineas.push('No se cargó css/styles.css. Comprueba que la carpeta css/ esté junto a index.html.');
+    if (sinJs) lineas.push('El módulo js/main.js no llegó a ejecutarse. Abre la consola (F12) para ver qué import falló.');
+    if (location.protocol === 'file:') {
+      lineas.push('Estás abriendo la página con file://. Los módulos ES y el AudioWorklet no funcionan así: sirve la carpeta por HTTP (python3 -m http.server 8000) y entra por http://localhost:8000.');
+    }
+    lineas.push('Si acabas de descargar el proyecto, verifica que estén los 18 archivos: faltar uno solo basta para que no arranque nada.');
+
+    aviso('La aplicación no arrancó', lineas);
+  }, ARRANQUE_MS);
+})();
+</script>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
